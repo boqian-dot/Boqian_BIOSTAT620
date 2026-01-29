@@ -1,0 +1,15 @@
+---
+title: "Boqian_Mao_Biostat_620_Lab3"
+author: "Boqian Mao"
+format: html
+editor: visual
+embed-resources: true
+fig-width: 5
+fig-height: 5
+theme: cosmo
+---
+
+```{r}
+met <- read.csv("met_all.gz")
+```
+

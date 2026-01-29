@@ -1,0 +1,74 @@
+---
+title: "Boqian_Mao_Biostat_620_Lab1"
+author: "Boqian Mao"
+format: pdf
+editor: visual
+embed-resources: true
+fig-width: 5
+fig-height: 5
+theme: cosmo
+---
+
+```{r}
+# install.packages("datasauRus")
+library(datasauRus)
+```
+
+## Question 1
+
+```{r}
+nrow(datasaurus_dozen)
+ncol(datasaurus_dozen)
+summary(datasaurus_dozen)
+```
+
+There are 1846 rows and 3 column in the dataset. Dataset, X, and Y as variables included in the dataset.
+
+## Question 2
+
+```{r}
+dino_data <- datasaurus_dozen[datasaurus_dozen$dataset == 'dino', ]
+plot(dino_data$x, dino_data$y)
+cor(dino_data$x, dino_data$y)
+```
+
+## Question 3
+
+```{r}
+star_data <- datasaurus_dozen[datasaurus_dozen$dataset == 'star', ]
+plot(star_data$x, star_data$y)
+cor(star_data$x, star_data$y)
+```
+
+The correlation coefficient between x and y for dino and star dataset is very close.
+
+## Question 4
+
+```{r}
+circle_data <- datasaurus_dozen[datasaurus_dozen$dataset == 'circle', ]
+plot(circle_data$x, circle_data$y)
+cor(circle_data$x, circle_data$y)
+```
+
+The correlation coefficient between x and y for dino and circle dataset is very close.
+
+## Question 5
+
+```{r}
+layout(matrix(1:16, nrow=4, ncol=4))
+par(mar = c(1, 1, 2, 1))
+for(name in unique(datasaurus_dozen$dataset)){
+  subset <- datasaurus_dozen[datasaurus_dozen$dataset == name, ]
+  plot(subset$x, subset$y, main = name)
+}
+layout(1)
+```
+
+## Question 6
+
+```{r}
+sapply(unique(datasaurus_dozen$dataset), function(name){
+    subset <- datasaurus_dozen[datasaurus_dozen$dataset == name, ]
+    return(cor(subset$x, subset$y))
+})
+```
