@@ -8,8 +8,42 @@ fig-width: 5
 fig-height: 5
 theme: cosmo
 ---
-
+## 1. Read in the data
 ```{r}
 met <- read.csv("met_all.gz")
 ```
+
+## 2. Check the dimensions, headers, footers
+```{r}
+dim(met)
+```
+2377343 rows and 30 columns
+
+## 3. Take a look at all the variables (hint: use the str function).
+```{r}
+str(met)
+```
+
+## 4. Take a closer look at the key variables
+```{r}
+summary(met)
+```
+```{r}
+met$elev[met$elev %in% c(9999)] <- NA
+met$temp[met$temp %in% c(-40)] <- NA
+met_new <- na.omit(met)
+summary(met)
+```
+```{r}
+max(met$elev, na.rm = TRUE)
+```
+At elevation 4113 is the highest weather station.
+
+```{r}
+met_clean <- subset(met, !is.na(temp))
+sus <- subset(met_clean, temp == -17.2)
+sus
+```
+It locates at Colorado near Colorado Springs/El Paso County.
+
 
