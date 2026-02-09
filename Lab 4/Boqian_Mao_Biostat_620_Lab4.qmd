@@ -1,0 +1,222 @@
+---
+title: "Boqian_Mao_Biostat_620_Lab4"
+author: "Boqian Mao"
+format: html
+editor: visual
+embed-resources: true
+fig-width: 5
+fig-height: 5
+theme: cosmo
+---
+
+## 1. Read in the data
+
+```{r}
+covid <- read.csv("covid_processed.csv")
+```
+
+## 2. Prepare the data
+
+```{r}
+library(dplyr)
+library(lubridate)
+
+covid <- covid %>%
+  mutate(date = ymd(date))
+
+### rates
+covid <- covid %>%
+  mutate(
+    cases_rate = cases / pop * 100000,
+    hosp_rate = hosp / pop * 100000,
+    booster_rate = booster / pop * 100000,
+    series_rate = series  / pop * 100000,
+    deaths_rate = deaths  / pop * 100000
+  )
+
+### states means
+state_mean <- covid %>%
+  group_by(state) %>%
+  summarise(
+    state_name = first(state_name),
+    region = first(region),
+    pop = first(pop),
+    mean_cases = mean(cases_rate, na.rm = TRUE),
+    mean_hosp = mean(hosp_rate, na.rm = TRUE),
+    mean_booster = mean(booster_rate, na.rm = TRUE),
+    mean_series = mean(series_rate, na.rm = TRUE),
+    mean_deaths = mean(deaths_rate, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+state_mean <- state_mean %>%
+  mutate(
+    pop_binary = ifelse(pop >= mean(pop), "High population", "Low population")
+  )
+
+state_mean <- state_mean %>%
+  mutate(region = factor(region))
+```
+
+## 3. Use geom_violin to examine the case rates and death rates by region
+
+```{r}
+library(ggplot2)
+ggplot(state_mean, aes(x = 1, y = mean_cases, fill = region)) +
+  geom_violin(trim = FALSE) +
+  facet_wrap(~ region, nrow = 1) +
+  labs(x = NULL, y = "Mean Cases", fill = "Region") +
+  theme_bw()
+```
+
+```{r}
+ggplot(state_mean, aes(x = 1, y = mean_deaths, fill = region)) +
+  geom_violin(trim = FALSE) +
+  facet_wrap(~ region, nrow = 1) +
+  labs(x = NULL, y = "Mean death", fill = "Region") +
+  theme_bw()
+```
+
+For mean case rates, some regions exhibit higher central values and wider distributions, indicating both higher typical case rates and greater variability among states within those regions. In contrast, other regions show more concentrated distributions, which means more similar case rates across states.
+
+For mean death rates, the overall scale is much smaller than that of case rates. Most regions display relatively narrow distributions, indicating less variation in death rates across states. However, a few regions show longer tails, which means the presence of states with unusually high or low death rates.
+
+## 4. Use geom_point with stat_smooth to examine the association between time and case rates by region
+
+```{r}
+start_date <- min(covid$date, na.rm = TRUE)
+covid_2w <- covid %>%
+  filter(date <= start_date + 14)
+
+ggplot(covid_2w, aes(x = date, y = cases_rate, color = region, group = region)) +
+  geom_point(alpha = 0.5) +
+  stat_smooth(span = 10) +
+  labs(
+    x = "Date",
+    y = "Cases Rate",
+    color = "Region"
+  ) +
+  theme_bw()
+```
+
+```{r}
+ggplot(covid_2w,
+       aes(x = date, y = cases_rate, color = region, group = region)) +
+  geom_point(alpha = 0.5) +
+  stat_smooth(method = "lm") +
+  labs(
+    x = "Date",
+    y = "Cases Rate",
+    color = "Region"
+  ) +
+  theme_bw()
+```
+The default smoothing method works better than a linear model for examining the association between time and case rates of only the first two weeks. From the graph, case rates remain relatively low during this period, with only a slight upward trend over time. Most regions show similar overall patterns, except the region below 2, and the magnitude of case rates differs across regions. 
+
+## 5. Use geom_bar to create barplots of the states by population category colored by region
+```{r}
+ggplot(state_mean, aes(x = pop_binary, fill = region)) +
+  geom_bar(position = "dodge") +
+  scale_fill_brewer(palette = "Paired") +
+  labs(
+    title = "Number of States by Population Category and Region",
+    x = "Population category",
+    y = "Number of states",
+    fill = "Region"
+  ) +
+  theme_bw()
+```
+Overall, more states fall into the low population category than the high population category. This indicates that population size is unevenly distributed across regions.
+
+## 6. Use stat_summary to examine mean vaccination rate and death rate by region with standard deviation error bars
+```{r}
+ggplot(state_mean, aes(x = region, y = mean_series)) +
+  stat_summary(fun.data = "mean_sdl", geom = "point", size = 3) +
+  stat_summary(fun.data = "mean_sdl", geom = "errorbar", width = 0.2) +
+  labs(
+    title = "Mean Vaccination Rate by Region",
+    x = "Region",
+    y = "Vaccination rate"
+  ) +
+  theme_bw()
+```
+```{r}
+ggplot(state_mean, aes(x = region, y = mean_deaths)) +
+  stat_summary(fun.data = "mean_sdl", geom = "point", size = 3) +
+  stat_summary(fun.data = "mean_sdl", geom = "errorbar", width = 0.2) +
+  labs(
+    title = "Mean Death Rate by Region",
+    x = "Region",
+    y = "Death rate"
+  ) +
+  theme_bw()
+```
+Vaccination rates are vary across regions. Regions 1 and 2 show the highest mean vaccination rates, while Regions 4 and 6 have the lowest mean vaccination rates. The error bars indicate variability within several regions. Some regions show wider standard deviation ranges than others, indicating less consistency in vaccination rates across states.
+
+Death rates are also differ by region. Regions 4 and 6 have higher mean death rates, and Regions 1 and 10 have lower mean death rates. The variability in death rates varies across regions. Some regions show large standard deviations, indicating less consistency in death rates across states.
+
+## 7. Make a map showing the spatial trend in COVID deaths in the US
+```{r}
+library(maps)
+us_map <- map_data("state")
+```
+
+```{r}
+map_df <- state_mean %>%
+  mutate(
+    region = tolower(state_name))
+map_merged <- left_join(us_map, map_df, by = "region")
+
+Death_rank <- map_df %>%
+  arrange(desc(mean_deaths))
+top10_states <- Death_rank[1:10, ]
+```
+
+```{r}
+state_centers <- us_map %>%
+  group_by(region) %>%
+  summarise(
+    long = mean(long),
+    lat = mean(lat))
+
+top10_centers <- left_join(top10_states, state_centers, by = "region")
+
+ggplot(map_merged, aes(long, lat, group = group)) +
+  geom_polygon(aes(fill = mean_deaths), color = "white") +
+  geom_text(
+    data = top10_centers,
+    aes(long, lat, label = "*"),
+    inherit.aes = FALSE,
+    color = "black",
+    size = 5
+  ) +
+  scale_fill_gradient(
+    low = "skyblue",
+    high = "red",
+    name = "Mean COVID death rate"
+  ) +
+  coord_fixed(1.3) +
+  theme_void() +
+  labs(
+    title = "Spatial Distribution of COVID Death Rates in the United States",
+    subtitle = "* indicates top 10 states with highest death rates"
+  )
+```
+The map shows clear COVID death rates across the United States. States with higher mean death rates, indicated by red shading. They are primarily in the southern and parts of the central United States. In contrast, several states in the northern and western regions have lighter colors, indicating lower mean death rates. The states with the highest death rates are not evenly distributed but instead cluster in specific geographic areas.
+
+## 8. Use a ggplot extension
+```{r}
+library(ggrepel)
+
+ggplot(state_mean, aes(x = mean_series, y = mean_deaths, color = factor(region))) +
+  geom_point() +
+  geom_text_repel(data = top10_states, aes(label = state_name), size = 3) +
+  labs(
+    title = "Death rate vs Vaccination rate (Top 10 labeled)",
+    x = "Mean vaccination rate",
+    y = "Mean death rate",
+    color = "Region"
+  ) +
+  theme_bw()
+```
+This scatterplot shows the relationship between mean vaccination rate and mean death rate across states, colored by region. The top 10 states with the highest death rates are labeled using ggrepel, which prevents label overlap and improves readability.
