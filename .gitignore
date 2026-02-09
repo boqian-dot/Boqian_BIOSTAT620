@@ -6,3 +6,4 @@
 *_files/
 *.log
 *.pdf
+.DS_Store
