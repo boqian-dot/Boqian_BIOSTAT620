@@ -1,0 +1,220 @@
+---
+title: "Boqian_Mao_Biostat_620_HW1"
+author: "Boqian Mao"
+format: html
+editor: visual
+embed-resources: true
+fig-width: 5
+fig-height: 5
+theme: cosmo
+---
+
+## Q1
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+pm2005 <- read.csv("MI_05.csv")
+pm2025 <- read.csv("MI_25.csv")
+```
+
+```{r}
+dim(pm2005)
+dim(pm2025)
+```
+
+```{r}
+str(pm2005)
+```
+```{r}
+str(pm2025)
+```
+```{r}
+head(pm2005)
+tail(pm2005)
+```
+```{r}
+head(pm2025)
+tail(pm2025)
+```
+```{r}
+hist(pm2005$Daily.Mean.PM2.5.Concentration,
+     main = "PM2.5 Distribution in Michigan (2005)",
+     xlab = "PM2.5")
+
+hist(pm2025$Daily.Mean.PM2.5.Concentration,
+     main = "PM2.5 Distribution in Michigan (2025)",
+     xlab = "PM2.5")
+```
+There are 5280 rows and 22 columns for pm2005 and 9934 rows and 22 columns for pm2025. The observation size increased from 2005 to 2025. Examining the structure of the datasets shows that each row represents a daily PM2.5 measurement at a monitoring site in Michigan. The data appear well structured, with consistent variable names and types across the two years. Inspecting the first and last few rows of each dataset confirms that the data are ordered correctly. No obvious formatting issues or irregular values are apparent from these checks. Histograms of daily mean PM2.5 concentrations show that both distributions are right-skewed, with most observations concentrated at lower concentration levels. In 2005, PM2.5 values are more widely spread and include a larger number of high value observations. In contrast, the 2025 distribution is more heavily concentrated at lower PM2.5 values, which means improved air quality.
+
+## Q2
+```{r}
+library(dplyr)
+
+pm2005 <- pm2005 %>%
+  mutate(year = 2005)
+
+pm2025 <- pm2025 %>%
+  mutate(year = 2025)
+
+pm2005 <- pm2005 %>%
+  rename(
+    date = Date,
+    pm25 = Daily.Mean.PM2.5.Concentration
+  )
+
+pm2025 <- pm2025 %>%
+  rename(
+    date = Date,
+    pm25 = Daily.Mean.PM2.5.Concentration
+  )
+pm_all <- bind_rows(pm2005, pm2025)
+```
+
+## Q3
+```{r}
+library(ggplot2)
+
+sites <- pm_all %>%
+  select(Site.Latitude, Site.Longitude, year)
+
+ggplot(sites, aes(x = Site.Longitude, y = Site.Latitude, color = factor(year))) +
+  geom_point(alpha = 0.7, size = 2) +
+  labs(
+    title = "PM2.5 Monitoring Sites in Michigan",
+    x = "Longitude",
+    y = "Latitude",
+    color = "Year") +
+  theme_minimal()
+```
+The map shows that the monitoring sites are primarily located in the Lower Peninsula, with relatively few sites in more northern regions of the state. A higher concentration of sites is observed in southeastern Michigan, and western and central areas contain fewer. Comparing the two years, the overall spatial pattern of monitoring sites are very similar. Many site locations overlap between 2005 and 2025, which means that a same set of monitoring stations has been used over time. Although there are some differences in the total number of sites, there is no clear evidence of a clear change in the geographic distribution of monitoring sites between 2005 and 2025.
+
+## Q4
+```{r}
+pm_all %>%
+  group_by(year) %>%
+  summarise(
+    missing_pm25 = sum(is.na(pm25))
+  )
+```
+The proportion of missing values for each year is 0
+```{r}
+pm_all %>%
+  group_by(year) %>%
+  summarise(
+    min_pm25 = min(pm25, na.rm = TRUE),
+    max_pm25 = max(pm25, na.rm = TRUE)
+  )
+```
+The combined dataset was examined for missing and implausible values of PM2.5. No missing values were founded. Also, all observed PM2.5 values were positive. Summary statistics show that PM2.5 span a reasonable range. The range of PM2.5 values is consistent with expectations for daily ambient air pollution measurements. Overall, no major data quality issues were founded.
+
+```{r}
+pm_all %>%
+  count(Method.Code, sort = TRUE)
+```
+```{r}
+pm_all %>%
+  count(year, Method.Code) %>%
+  group_by(year) %>%
+  mutate(prop = n / sum(n))
+```
+The distribution of Method.Code shows that two methods dominate the dataset, which are method Code 118 and Method Code 636 . According to the Method Codetable, Method Code 118 corresponds to the R & P Model 2025 PM2.5 Sequential instrument. Method Code 636 corresponds to the Teledyne T640 instrument. There are 2543 observations have missing method codes, representing some proportion of the dataset. However, the majority of observations are associated with clearly identified methods.
+
+A clear temporal pattern shows in the distribution of the methods. In 2005, PM2.5 measurements were dominated by Method Code 118, which accounts for approximately 82.5% of observations. In contrast, the most common method in 2025 is Code 636. Additionally, approximately 25.6% of 2025 observations have missing method codes, suggesting differences in documentation or data integration practices over time.
+
+## Q5
+### Level 1
+```{r}
+ggplot(pm_all, aes(x = factor(year), y = pm25, fill = factor(year))) +
+  geom_boxplot() +
+  labs(
+    title = "PM2.5 Distribution in Michigan",
+    x = "Year",
+    y = "PM2.5") +
+  theme_minimal()
+```
+At the state level, the boxplot indicates a clear downward shift in PM2.5 concentrations from 2005 to 2025. The median concentration in 2025 is lower than in 2005, and the interquartile range appears narrower, suggesting reduced variability in daily PM2.5 levels. This indicates an overall improvement in air quality across Michigan.
+
+### Level 2
+```{r}
+county_summary <- pm_all %>%
+  group_by(County, year) %>%
+  summarise(mean_pm25 = mean(pm25, na.rm = TRUE), .groups = "drop")
+```
+```{r}
+ggplot(county_summary, aes(x = factor(year), y = mean_pm25, group = County)) +
+  geom_point() +
+  labs(
+    title = "County Level Mean PM2.5",
+    x = "Year",
+    y = "Mean PM2.5") +
+  theme_minimal()
+```
+
+```{r}
+library(tidyr)
+county_diff <- county_summary %>%
+  pivot_wider(names_from = year, values_from = mean_pm25) %>%
+  mutate(diff = `2025` - `2005`)
+
+county_locations <- pm_all %>%
+  group_by(County) %>%
+  summarise(
+    lat = mean(Site.Latitude),
+    lon = mean(Site.Longitude),
+    .groups = "drop")
+
+county_map <- left_join(county_diff, county_locations, by = "County")
+
+ggplot(county_map, aes(x = lon, y = lat, color = diff)) +
+  geom_point(size = 5) +
+  labs(
+    title = "Change in Mean PM2.5 (2025 - 2005)",
+    color = "Difference"
+  ) +
+  theme_minimal()
+```
+At the county level, mean PM2.5 concentrations are generally lower in 2025 compared to 2005. The 2005 county level means exhibit a wider range and include several counties with high average concentrations. In contrast, 2025 county means are more tightly clustered at lower values, indicating both reduced levels and decreased variability across counties. The spatial plot of differences shows that most counties experienced negative changes, meaning that PM2.5 decreased over time. Overall, the county level analysis suggests that air quality improvements were widespread across Michigan.
+
+### Level 3
+```{r}
+wayne_data <- pm_all %>%
+  filter(County == "Wayne")
+
+site_summary <- wayne_data %>%
+  group_by(Local.Site.Name, year) %>%
+  summarise(mean_pm25 = mean(pm25, na.rm = TRUE), .groups = "drop")
+```
+```{r}
+ggplot(site_summary, aes(x = factor(year), y = mean_pm25, group = Local.Site.Name)) +
+  geom_point() +
+  labs(
+    title = "Wayne County Site-Level Mean PM2.5",
+    x = "Year",
+    y = "Mean PM2.5") +
+  theme_minimal()
+
+```
+```{r}
+wayne_sites <- wayne_data %>%
+  group_by(Local.Site.Name) %>%
+  summarise(
+    lat = mean(Site.Latitude),
+    lon = mean(Site.Longitude),
+    .groups = "drop")
+
+wayne_diff <- site_summary %>%
+  pivot_wider(names_from = year, values_from = mean_pm25) %>%
+  mutate(diff = `2025` - `2005`)
+
+wayne_map <- left_join(wayne_diff, wayne_sites, by = "Local.Site.Name")
+
+ggplot(wayne_map, aes(x = lon, y = lat, color = diff)) +
+  geom_point(size = 5) +
+  labs(
+    title = "Wayne County Site-Level Change",
+    color = "Difference") +
+  theme_minimal()
+```
+At the site level in Wayne County, PM2.5 also decreased from 2005 to 2025. The spatial change plot shows that nearly all monitoring sites experienced decreases in PM2.5 levels, with differences generally between −8 and −10. The consistent negative differences across sites indicate that the reduction in air pollution was widespread rather than limited to specific locations.
