@@ -1,0 +1,137 @@
+---
+title: "Boqian_Mao_Biostat_620_HW1"
+author: "Boqian Mao"
+format: html
+editor: visual
+embed-resources: true
+fig-width: 5
+fig-height: 5
+theme: cosmo
+---
+
+## Step 1
+```{r}
+# install.packages("data.table")
+library(data.table)
+```
+
+## Step 2
+```{r}
+url <- 'https://raw.githubusercontent.com/dmcable/BIOSTAT620W26/main/data/covid/population.csv'
+if (!file.exists("covid_processed.csv"))
+  download.file(
+    url = url,
+    destfile = "population.csv",
+    method   = "libcurl",
+    timeout  = 60
+    )
+poppulation <- read.csv('population.csv')
+```
+## Step 3
+```{r}
+library(tidyr)
+library(janitor)
+library(tidyverse)
+
+pop1 <- poppulation %>%
+  row_to_names(row_number = 1) %>% 
+  mutate(state_name = NAME) %>% 
+  select(POP_2020, POP_2021, state_name) %>%
+  mutate(
+    POP_2020 = as.numeric(POP_2020),
+    POP_2021 = as.numeric(POP_2021))
+
+pop_tidy <- pop1 %>%
+  pivot_longer(
+    cols = starts_with("POP_"),
+    names_to = "year",
+    values_to = "population"
+  )
+
+map <- c(
+  setNames(state.abb, state.name),
+  "District of Columbia" = "DC",
+  "Puerto Rico" = "PR"
+)
+
+pop_tidy <- pop_tidy %>%
+  mutate(state = unname(map[state_name])) %>%
+  relocate(state, .after = state_name)
+```
+
+## Step 4
+```{r}
+library(jsonlite)
+
+url <- "https://github.com/datasciencelabs/2024/raw/refs/heads/main/data/regions.json"
+
+regions <- fromJSON(url)
+
+regions <- regions %>%
+  mutate(region = unlist(region))
+
+regions <- regions %>%
+  unnest(states) %>%
+  transmute(
+    state_name = states,
+    region = factor(region),
+    region_name = region_name
+  )
+regions <- regions %>%
+  mutate(
+    region_name = if_else(region == 2,
+                          "NY & NJ + PR + VI",
+                          region_name))
+head(regions, 10)
+```
+
+## Step 5
+```{r}
+pop_tidy2 <- pop_tidy %>%
+  left_join(
+    regions %>% select(state_name, region, region_name),
+    by = "state_name")
+
+head(pop_tidy2)
+```
+
+## Step 6
+```{r}
+library(httr2)
+api <- "https://data.cdc.gov/resource/pwn4-m3yp.json"
+request <- request(paste0(api,paste0("?$limit=10000000000")))
+response <- request |> req_perform() |> resp_body_string()
+cases_raw <- fromJSON(response)
+head(cases_raw)
+```
+Most CDC API endpoints impose a default row limit to prevent extremely large downloads in a single request. Hence, if we replace "?$limit=10000000000" with "", the API will return only the default number of records, not the full dataset. 
+
+## Step 7
+```{r}
+library(lubridate)
+cases <- cases_raw %>%
+  transmute(
+    state = state,
+    date  = as_date(ymd_hms(end_date)),
+    cases = as.numeric(new_cases)
+  )
+
+head(cases)
+```
+
+## Step 8
+```{r}
+covid <- cases %>%
+  mutate(
+    epi_year = epiyear(date),
+    epi_week = epiweek(date)
+  ) %>%
+  left_join(
+    pop_tidy2 %>% select(state, state_name, year, population, region, region_name),
+    by = c("state" = "state")
+  ) %>%
+  arrange(state, date)
+
+head(covid, 10)
+```
+
