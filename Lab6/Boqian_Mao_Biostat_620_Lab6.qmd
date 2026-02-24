@@ -1,0 +1,174 @@
+---
+title: "Boqian_Mao_Biostat_620_Lab6"
+author: "Boqian Mao"
+format: html
+editor: visual
+embed-resources: true
+fig-width: 5
+fig-height: 5
+theme: cosmo
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidytext)
+library(readr)
+
+url <- "https://raw.githubusercontent.com/dmcable/BIOSTAT620W26/main/data/mtsamples/mtsamples.csv"
+mtsamples <- read_csv(url)
+
+head(mtsamples)
+```
+
+## Q1
+```{r}
+mtsamples %>% 
+  count(mtsamples$medical_specialty, sort = TRUE) %>% 
+  nrow()
+```
+We have different categories in specialty. These categories are broadly related as medical domains, and many share clinical vocabulary. They are not overlapping as labels, but they do overlap conceptually because some labels represent clinical specialties while others represent note/report types. The distribution is unlikely to be even. It follows a few large categories and many small ones.
+
+## Q2
+```{r}
+words <- mtsamples %>%
+  select(transcription) %>%
+  filter(!is.na(transcription)) %>%
+  unnest_tokens(word, transcription)
+
+word_counts <- words %>%
+  count(word, sort = TRUE)
+
+top20 <- word_counts %>% 
+  slice_max(n, n = 20)
+
+top20 %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(x = word, y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "Word", y = "Count", title = "Top 20 most frequent words in transcription")
+```
+The most frequent tokens are dominated by common English stop words, which is expected. This confirms the tokenization worked. Also, the appearance of words like “patient” is normally consistent with clinical documentation.
+
+## Q3
+```{r}
+data("stop_words")
+
+words_clean <- words %>%
+  anti_join(stop_words, by = "word") %>%  
+  filter(!grepl("[0-9]", word))        
+
+top20_clean <- words_clean %>%
+  count(word, sort = TRUE) %>%
+  slice_max(n, n = 20)
+
+top20_clean %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(x = word, y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "Word", y = "Count",
+       title = "Top 20 most frequent words (stop words + numbers removed)")
+```
+After removing stop words and numeric tokens, the most frequent words shift from common function words to clinically meaningful vocabulary. We now see patient related terms, symptom words, and many procedure words.
+
+## Q4
+```{r}
+bigrams <- mtsamples %>%
+  select(transcription) %>%
+  filter(!is.na(transcription)) %>%
+  unnest_tokens(bigram, transcription, token = "ngrams", n = 2)
+
+top20_bi <- bigrams %>%
+  count(bigram, sort = TRUE) %>%
+  slice_max(n, n = 20)
+
+top20_bi %>%
+  mutate(bigram = reorder(bigram, n)) %>%
+  ggplot(aes(x = bigram, y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "Bigram", y = "Count", title = "Top 20 bigrams")
+```
+```{r}
+trigrams <- mtsamples %>%
+  select(transcription) %>%
+  filter(!is.na(transcription)) %>%
+  unnest_tokens(trigram, transcription, token = "ngrams", n = 3)
+
+top20_tri <- trigrams %>%
+  count(trigram, sort = TRUE) %>%
+  slice_max(n, n = 20)
+
+top20_tri %>%
+  mutate(trigram = reorder(trigram, n)) %>%
+  ggplot(aes(x = trigram, y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "trigram", y = "Count", title = "Top 20 trigrams")
+```
+The most frequent bigrams/trigrams are dominated by common narrative templates. Trigrams provide more context than bigrams, but they are still structural rather than topic-specific. This indicates that removing stop words might be more useful for more domain-specific medical concepts.
+
+## Q5
+```{r}
+library(tidyr)
+target <- "patient"
+
+bigrams <- mtsamples %>%
+  filter(!is.na(transcription)) %>%
+  unnest_tokens(bigram, transcription, token = "ngrams", n = 2) %>%
+  separate(bigram, into = c("word1","word2"), sep = " ")
+
+before <- bigrams %>%
+  filter(word2 == target) %>%
+  count(word1, sort = TRUE)
+
+after <- bigrams %>%
+  filter(word1 == target) %>%
+  count(word2, sort = TRUE)
+
+before %>% slice_head(n = 15)
+after  %>% slice_head(n = 15)
+```
+
+## Q6
+```{r}
+data("stop_words")
+
+top5_by_spec <- mtsamples %>%
+  filter(!is.na(transcription), !is.na(medical_specialty), medical_specialty != "") %>%
+  select(medical_specialty, transcription) %>%
+  unnest_tokens(word, transcription) %>%
+  anti_join(stop_words, by = "word") %>%
+  count(medical_specialty, word, sort = TRUE) %>%
+  group_by(medical_specialty) %>%
+  slice_max(n, n = 5) %>%
+  ungroup() %>%
+  arrange(medical_specialty, desc(n))
+
+head(top5_by_spec, 20)
+```
+
+## Q7
+```{r}
+data("stop_words")
+target <- "diabetes" 
+
+word_by_spec <- mtsamples %>%
+  filter(!is.na(transcription), !is.na(medical_specialty), medical_specialty != "") %>%
+  select(medical_specialty, transcription) %>%
+  unnest_tokens(word, transcription) %>%
+  anti_join(stop_words, by = "word") %>%
+  group_by(medical_specialty) %>%
+  summarize(
+    total_words = n(),
+    target_count = sum(word == target),
+    rate = target_count / total_words,
+    .groups = "drop"
+  ) %>%
+  arrange(desc(rate))
+
+word_by_spec %>% slice_head(n = 10)
+```
+I checked whether the word diabetes is used more in some specialties than others. After removing stop words, I computed the proportion of tokens equal to diabetes within each specialty.
