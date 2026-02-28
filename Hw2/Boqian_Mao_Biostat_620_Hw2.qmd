@@ -1,0 +1,439 @@
+---
+title: "Boqian_Mao_Biostat_620_Hw2"
+author: "Boqian Mao"
+format: html
+editor: visual
+embed-resources: true
+fig-width: 5
+fig-height: 5
+theme: cosmo
+---
+
+## Step 1
+```{r}
+library(dplyr)
+library(readr)
+
+ind <- read_csv("chs_individual.csv")
+reg <- read_csv("chs_regional.csv")
+
+reg_clean <- reg %>% distinct(townname, .keep_all = TRUE)
+
+n_ind <- nrow(ind)
+dat <- ind %>% left_join(reg_clean, by = "townname")
+
+get_mode <- function(x) {
+  x <- x[!is.na(x)]
+  if (length(x) == 0) return(NA)
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+id_vars <- c("townname", "male", "hispanic")
+
+num_cols_all <- names(dat)[sapply(dat, is.numeric)]
+num_cols_all <- setdiff(num_cols_all, id_vars)
+
+is_binary01 <- function(x) {
+  ux <- unique(x[!is.na(x)])
+  length(ux) > 0 && all(ux %in% c(0, 1))
+}
+binary_num_cols <- num_cols_all[sapply(dat[num_cols_all], is_binary01)]
+
+num_cols <- setdiff(num_cols_all, binary_num_cols)
+
+cat_cols <- names(dat)[!sapply(dat, is.numeric)]
+cat_cols <- setdiff(cat_cols, id_vars)
+cat_cols <- union(cat_cols, binary_num_cols)
+
+global_mean <- sapply(dat[num_cols], function(x) mean(x, na.rm = TRUE))
+global_mode <- sapply(dat[cat_cols], get_mode)
+
+dat_imp <- dat %>%
+  group_by(male, hispanic) %>%
+  mutate(across(all_of(num_cols), ~{
+    gm <- mean(.x, na.rm = TRUE)
+    fill <- ifelse(is.nan(gm), global_mean[cur_column()], gm)
+    ifelse(is.na(.x), fill, .x)
+  })) %>%
+  ungroup()
+
+dat_imp <- dat_imp %>%
+  group_by(male, hispanic) %>%
+  mutate(across(all_of(cat_cols), ~{
+    m <- get_mode(.x)
+    fill <- ifelse(is.na(m), global_mode[cur_column()], m)
+    ifelse(is.na(.x), fill, .x)
+  })) %>%
+  ungroup()
+
+print(head(dat_imp))
+```
+```{r}
+nrow(ind)
+nrow(dat_imp)
+```
+
+## Step 2
+```{r}
+dat_imp <- dat_imp %>%
+  mutate(
+    obesity_level = case_when(
+      bmi < 14 ~ "underweight",
+      bmi >= 14 & bmi < 22 ~ "normal",
+      bmi >= 22 & bmi <= 24 ~ "overweight",
+      bmi > 24 ~ "obese",
+    ),
+    obesity_level = factor(obesity_level,
+                           levels = c("underweight", "normal", "overweight", "obese"))
+  )
+
+print(head(dat_imp %>% select(bmi, obesity_level)))
+
+# Summary table
+obesity_summary <- dat_imp %>%
+  group_by(obesity_level) %>%
+  summarise(
+    min_BMI = min(bmi),
+    max_BMI = max(bmi),
+    n = n(),
+    .groups = "drop"
+  )
+
+print(obesity_summary)
+```
+
+## Step 3
+```{r}
+dat_imp <- dat_imp %>%
+  mutate(
+    shs_bin = case_when(
+      smoke %in% c(1) ~ 1,
+      smoke %in% c(0) ~ 0,
+      TRUE ~ NA_real_
+    ),
+    gas_bin = case_when(
+      gasstove %in% c(1) ~ 1,
+      gasstove %in% c(0) ~ 0,
+      TRUE ~ NA_real_
+      ),
+    smoke_gas_exposure = case_when(
+      shs_bin == 0 & gas_bin == 0 ~ "none",
+      shs_bin == 1 & gas_bin == 0 ~ "second_hand_smoke_only",
+      shs_bin == 0 & gas_bin == 1 ~ "gas_stove_only",
+      shs_bin == 1 & gas_bin == 1 ~ "both",
+      TRUE ~ NA_character_
+    ),
+    smoke_gas_exposure = factor(
+      smoke_gas_exposure,
+      levels = c("none", "second_hand_smoke_only", "gas_stove_only", "both")
+    )
+  )
+
+print(head(dat_imp %>% select(smoke, gasstove, smoke_gas_exposure)))
+table(dat_imp$smoke_gas_exposure)
+```
+## Step 4
+```{r}
+dat_imp <- dat_imp %>%
+  mutate(sex = ifelse(male == 1, "male", "female"))
+```
+
+```{r}
+tab_sex <- dat_imp %>%
+  group_by(sex) %>%
+  summarise(
+    n = n(),
+    mean_fev = mean(fev, na.rm = TRUE),
+    sd_fev = sd(fev, na.rm = TRUE),
+    .groups = "drop"
+  )
+print(tab_sex)
+```
+
+```{r}
+tab_town <- dat_imp %>%
+  group_by(townname) %>%
+  summarise(
+    n = n(),
+    mean_fev = mean(fev, na.rm = TRUE),
+    sd_fev = sd(fev, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(mean_fev))
+print(tab_town)
+```
+
+```{r}
+tab_obesity <- dat_imp %>%
+  group_by(obesity_level) %>%
+  summarise(
+    n = n(),
+    mean_fev = mean(fev, na.rm = TRUE),
+    sd_fev = sd(fev, na.rm = TRUE),
+    .groups = "drop"
+  )
+print(tab_obesity)
+```
+
+```{r}
+tab_exposure <- dat_imp %>%
+  group_by(smoke_gas_exposure) %>%
+  summarise(
+    n = n(),
+    mean_fev = mean(fev, na.rm = TRUE),
+    sd_fev = sd(fev, na.rm = TRUE),
+    .groups = "drop"
+  )
+print(tab_exposure)
+```
+## EDA
+```{r}
+library(ggplot2)
+
+dim(dat_imp)
+str(dat_imp)
+
+head(dat_imp)
+tail(dat_imp)
+
+dat_imp %>%
+  summarise(
+    n = n(),
+    na_BMI = sum(is.na(bmi)),
+    na_fev = sum(is.na(fev)),
+    na_pm25 = sum(is.na(pm25_mass)),
+    na_smoke_gas = sum(is.na(smoke_gas_exposure)),
+    na_obesity = sum(is.na(obesity_level))
+  )
+```
+
+```{r}
+ggplot(dat_imp, aes(x = bmi)) + geom_histogram(bins = 30) + labs(title="BMI distribution")
+ggplot(dat_imp, aes(x = fev)) + geom_histogram(bins = 30) + labs(title="FEV distribution")
+ggplot(dat_imp, aes(x = pm25_mass)) + geom_histogram(bins = 30) + labs(title="PM2.5 (pm25_mass) distribution")
+```
+BMI is right-skewed with a small number of high-BMI observations, FEV appears closed to normal, and pm25_mass shows a discrete pattern . These patterns inform how we interpret associations with FEV in subsequent analyses.
+
+```{r}
+# BMI & FEV
+ggplot(dat_imp, aes(x = bmi, y = fev)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title = "Association between BMI and FEV", x="BMI", y="FEV (ml)")
+
+cor(dat_imp$bmi, dat_imp$fev, use = "complete.obs")
+
+m1 <- lm(fev ~ bmi, data = dat_imp)
+summary(m1)
+```
+The plot shows a clear positive association between BMI and FEV. As BMI increases, FEV tends to increase on average. However, the points are widely scattered, especially in the main BMI range. It's suggesting BMI explains only part of the variability in FEV and other factors likely contribute as well.
+
+```{r}
+# Smoke gas & FEV
+ggplot(dat_imp, aes(x = smoke_gas_exposure, y = fev)) +
+  geom_boxplot() +
+  labs(title="FEV by smoke/gas exposure", x="smoke_gas_exposure", y="FEV (ml)") +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+
+m2 <- lm(fev ~ smoke_gas_exposure, data = dat_imp)
+summary(m2)
+```
+Across the four smoke & gas exposure groups, the medians and interquartile ranges are quite similar, indicating only small differences in FEV by exposure category. Some groups show more outliers, but overall the distributions overlap substantially.
+
+```{r}
+## PM2.5 & FEV
+ggplot(dat_imp, aes(x = pm25_mass, y = fev)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(title="Association between PM2.5 (pm25_mass) and FEV", x="pm25_mass", y="FEV (ml)")
+
+cor(dat_imp$pm25_mass, dat_imp$fev, use = "complete.obs")
+
+m3 <- lm(fev ~ pm25_mass, data = dat_imp)
+summary(m3)
+```
+PM2.5 values appear in vertical bands, consistent with a community-level exposure assigned to many individuals. The fitted line shows a slight negative trend, implying higher PM2.5 is associated with marginally lower FEV, but the relationship looks weak given the large spread of FEV at each exposure level.
+
+```{r}
+m4 <- lm(fev ~ bmi + pm25_mass + smoke_gas_exposure + sex + obesity_level, data = dat_imp)
+summary(m4)
+```
+I added all related variables to the model. BMI is positively associated with FEV. PM2.5 shows a small but statistically significant negative association with FEV. Using none as the reference category for smoke & gas exposure, the both exposure group has significantly lower FEV. The gas_stove_only group is also lower but only marginally significant, while second_hand_smoke_only is not significantly different from the reference. Sex is strongly associated with FEV. Compared to the underweight reference group, the normal and overweight obesity categories have significantly higher FEV, while the obese category is borderline.
+
+## Visualization
+```{r}
+library(dplyr)
+library(ggplot2)
+library(viridis)
+library(RColorBrewer)
+library(leaflet)
+```
+
+```{r}
+## 1
+p1 <- ggplot(dat_imp, aes(x = bmi, y = fev)) +
+  geom_point(alpha = 0.35, size = 0.9) +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~ townname) +
+  labs(
+    title = "BMI vs FEV by Town",
+    x = "BMI",
+    y = "FEV (ml)"
+  ) +
+  theme_bw()
+
+print(p1) 
+```
+Across all 12 towns, the fitted regression lines are generally positive, indicating that higher BMI is associated with higher FEV within each community. The vertical spread of points differs across towns, suggesting that town-level factors may influence overall FEV levels and contribute to heterogeneity in the BMI–FEV relationship.
+
+```{r}
+## 2
+p2a <- ggplot(dat_imp, aes(x = fev, fill = obesity_level)) +
+  geom_histogram(bins = 30, position = "stack", color = "white") +
+  labs(
+    title = "Stacked Histogram: FEV by BMI Category",
+    x = "FEV (ml)",
+    y = "Count",
+    fill = "BMI category"
+  ) +
+  theme_bw()
+
+p2b <- ggplot(dat_imp, aes(x = fev, fill = smoke_gas_exposure)) +
+  geom_histogram(bins = 30, position = "stack", color = "white") +
+  labs(
+    title = "Stacked Histogram: FEV by Smoke/Gas Exposure",
+    x = "FEV (ml)",
+    y = "Count",
+    fill = "Exposure"
+  ) +
+  theme_bw()
+
+print(p2a)
+print(p2b)
+```
+The histogram shows that most observations fall in the normal BMI category, which contributes the largest share of counts across nearly all FEV bins. As FEV increases, the contribution from the overweight and obese categories becomes more visible, suggesting that higher BMI categories may be associated with slightly higher FEV on average. However, the distributions still overlap substantially, so BMI category alone does not fully separate FEV levels.
+
+The overall FEV distribution appears broadly similar across exposure categories, with most values concentrated around ~1700–2400 ml. The gas_stove_only group dominates the counts in most bins, indicating it is the most common exposure category in the sample. Because the colored distributions overlap heavily, any differences in FEV by exposure category look subtle in this stacked view.
+
+```{r}
+p3_count <- ggplot(dat_imp, aes(x = smoke_gas_exposure, fill = obesity_level)) +
+  geom_bar(position = "stack", color = "white") +
+  scale_fill_brewer(palette = "Pastel1") +
+  labs(
+    title = "BMI Category by Smoke/Gas Exposure",
+    x = "Smoke/Gas Exposure",
+    y = "Count",
+    fill = "BMI Category"
+  ) +
+  theme_bw()
+
+p3_prop <- ggplot(dat_imp, aes(x = smoke_gas_exposure, fill = obesity_level)) +
+  geom_bar(position = "fill", color = "white") +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Proportion of BMI Category by Smoke/Gas Exposure",
+    x = "Smoke/Gas Exposure",
+    y = "Proportion",
+    fill = "BMI Category"
+  ) +
+  theme_bw()
+
+
+print(p3_count)
+print(p3_prop)
+```
+BMI Category by Smoke/Gas Exposure bar chart shows the number of children in each BMI category within each smoke/gas exposure group. The gas_only group contains the largest number of observations overall, and across all exposure groups the normal BMI category is the most common. The overweight and obese categories are present in every exposure group but make up a smaller share of the total counts.
+
+Proportion of BMI Category by Smoke/Gas Exposure bar chart compares the composition of BMI categories across exposure groups while accounting for different sample sizes. The normal BMI category dominates in every exposure group, but the both group appears to have a slightly larger proportion of overweight/obese individuals compared with the neither group. 
+
+```{r}
+## 4
+p4_bmi <- ggplot(dat_imp, aes(x = obesity_level, y = fev, fill = obesity_level)) +
+  geom_boxplot(outlier.alpha = 0.6) +
+  scale_fill_brewer(palette = "Set3", guide = "none") +
+  labs(
+    title = "FEV by BMI Category",
+    x = "BMI Category",
+    y = "FEV (ml)"
+  ) +
+  theme_bw()
+
+p4_exp <- ggplot(dat_imp, aes(x = smoke_gas_exposure, y = fev, fill = smoke_gas_exposure)) +
+  geom_boxplot(outlier.alpha = 0.6) +
+  scale_fill_brewer(palette = "Set3", guide = "none") +
+  labs(
+    title = "FEV by Smoke/Gas Exposure",
+    x = "Smoke/Gas Exposure",
+    y = "FEV (ml)"
+  ) +
+  theme_bw()
+
+print(p4_bmi)
+print(p4_exp)
+```
+FEV by BMI Category Boxplot shows that FEV tends to increase across BMI categories, with the underweight group showing the lowest median FEV and the overweight/obese groups showing higher medians. This pattern suggests a positive association between BMI category and lung function.
+
+FEV by Smoke/Gas Exposure Boxplot shows the distributions of FEV across smoke/gas exposure categories are highly overlapping. The gas_only and both groups appear to have slightly lower medians than the neither group, but the difference is small relative to within-group variability. This suggests that smoke and gas exposure may have a weak or subtle association with FEV in the raw data and may be clearer after adjusting for other factors.
+
+```{r}
+## 5
+town_pm <- dat_imp %>%
+  group_by(townname) %>%
+  summarise(
+    pm25 = mean(pm25_mass, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+town_geo <- dat_imp %>%
+  group_by(townname) %>%
+  summarise(
+    pm25 = mean(pm25_mass, na.rm = TRUE),
+    lat = first(lat),
+    lon = first(lon),
+    .groups = "drop"
+  )
+
+pal <- colorNumeric(palette = "YlOrRd", domain = town_geo$pm25)
+
+leaflet(town_geo) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addCircleMarkers(
+    lng = ~lon, lat = ~lat,
+    radius = 6,
+    color = ~pal(pm25),
+    stroke = TRUE, weight = 1,
+    fillOpacity = 0.85,
+    popup = ~paste0("<b>", townname, "</b><br>PM2.5: ", round(pm25, 2))
+  ) %>%
+  addLegend("bottomright", pal = pal, values = ~pm25,
+            title = "PM2.5 (pm25_mass)")
+```
+Leaflet map shows clear spatial variation in PM2.5 concentrations across the CHS towns. The highest PM2.5 values  cluster in the inland Southern California and San Bernardino–Riverside area, while lower PM2.5 levels appear more often in coastal communities. Overall, this geographic pattern is consistent with the idea that inland regions experience higher particulate pollution than many coastal locations in this dataset.
+
+```{r}
+## 6
+town_assoc <- dat_imp %>%
+  group_by(townname) %>%
+  summarise(
+    mean_fev = mean(fev, na.rm = TRUE),
+    pm25 = mean(pm25_mass, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  )
+
+p6 <- ggplot(town_assoc, aes(x = pm25, y = mean_fev)) +
+  geom_point(aes(size = n), alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE) +
+  scale_size_continuous(name = "Town sample size") +
+  labs(
+    title = "Town-level Association: Mean FEV vs PM2.5",
+    x = "PM2.5 (pm25_mass)",
+    y = "Mean FEV (ml)"
+  ) +
+  theme_bw()
+
+print(p6)
+```
+This town level plot suggests a negative association between PM2.5 and lung function. Towns with higher PM2.5 tend to have lower mean FEV. The fitted regression line slopes downward, while the shaded 95% confidence band indicates uncertainty due to the small number of towns. Because each point represents a town average, this figure primarily captures between town differences rather than individual level exposure effects.
