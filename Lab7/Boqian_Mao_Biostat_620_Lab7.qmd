@@ -1,0 +1,97 @@
+---
+title: "Boqian_Mao_Biostat_620_Lab7"
+author: "Boqian Mao"
+format: html
+editor: visual
+embed-resources: true
+fig-width: 5
+fig-height: 5
+theme: cosmo
+---
+
+## Question 1
+```{r}
+website <- xml2::read_html("https://pubmed.ncbi.nlm.nih.gov/?term=sars-cov-2")
+
+counts <- xml2::xml_find_first(website, "//div[contains(@class,'results-amount')]/span[contains(@class,'value')]")
+
+counts <- as.character(counts)
+
+totalcount <- stringr::str_extract(counts, "[0-9][0-9.,]*")
+
+totalcount <- gsub("[.,]", "", totalcount)
+
+totalcount <- as.numeric(totalcount)
+print(totalcount)
+```
+
+## Question 2
+```{r}
+# read in text, each line is a separate character
+abstracts <- readLines('abstract-sars-cov-2-set.txt', warn = FALSE)
+# combine all text into one character
+abstracts <- paste(abstracts, collapse = "\n")
+# split the text whenever 3 new lines occur in a row (indicating two blank lines)
+abstracts <- strsplit(abstracts, "\n\n\n")
+# replace any remaining "\n" symbols with spaces
+abstracts <- gsub("\n", " ", abstracts)
+# replace multiple spaces with single space
+abstracts <- gsub(" +", " ", abstracts)
+```
+
+## Question 3
+```{r}
+library(stringr)
+
+institution <- str_extract_all(
+  abstracts,
+  "\\b(?:University of [A-Za-z][A-Za-z .&'-]{2,}|[A-Za-z][A-Za-z .&'-]{2,} (?:State )?University|[A-Za-z][A-Za-z .&'-]{2,} Institute of [A-Za-z][A-Za-z .&'-]{2,})\\b"
+)
+
+institution <- unlist(institution)
+table(institution)
+```
+The most frequent institution is Michigan State University (10), followed by University of Manitoba (3) and University of Michigan Medical School (3). To improve the results, I would normalize institution names to merge sub units into a parent university, and refine the regex to capture full institution names and avoid repeated matches.
+
+## Question 4
+```{r}
+library(stringr)
+abstracts <- readLines("abstract-sars-cov-2-set.txt", warn = FALSE)
+abstracts <- paste(abstracts, collapse = "\n")
+abstracts <- strsplit(abstracts, "\n\n\n")[[1]] 
+
+line1   <- str_extract(abstracts, "(?m)^\\d+\\..*$")                 
+journal <- str_replace(line1, "(?m)^\\d+\\.\\s*", "")              
+journal <- str_replace(journal, "\\s20(20|21)\\b.*$", "")           
+
+titles <- sapply(abstracts, function(x){
+  unlist(strsplit(x, split = "\n\n"))[2]
+}, USE.NAMES = FALSE)
+titles <- gsub("\n", " ", titles)
+titles <- gsub(" +", " ", titles)
+
+authors <- sapply(abstracts, function(x){
+  unlist(strsplit(x, split = "\n\n"))[3]
+}, USE.NAMES = FALSE)
+authors <- gsub("\n", " ", authors)
+authors <- gsub(" +", " ", authors)
+
+
+affiliations <- str_extract(abstracts, "(?s)\\n\\nAuthor information:\\n.*?\\n\\n")
+
+affiliations <- str_replace(affiliations, "(?s)^\\n\\nAuthor information:\\n", "")
+affiliations <- str_replace(affiliations, "(?s)\\n\\n$", "")
+affiliations <- gsub("\n", " ", affiliations)
+affiliations <- gsub(" +", " ", affiliations)
+
+papers <- data.frame(
+  journal = journal,
+  title = titles,
+  authors = substr(authors, 1, 100),
+  affiliations = substr(affiliations, 1, 100),
+  stringsAsFactors = FALSE
+)
+
+knitr::kable(papers[1:5, ])
+```
+
