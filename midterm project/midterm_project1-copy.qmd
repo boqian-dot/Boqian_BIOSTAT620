@@ -1,0 +1,249 @@
+---
+title: "BIOSTAT 620 Midterm Project: Diabetes Subgroup Comparison"
+author: "Boqian Mao, Shuchen Wu"
+format: html
+editor: visual
+embed-resources: true
+fig-width: 8
+fig-height: 6
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## Introduction
+
+Diabetes is a heterogeneous metabolic condition that includes clinically distinct subgroups, such as prediabetes, type 1 diabetes, and type 2 diabetes. These groups differ in disease mechanisms, clinical presentation, and risk profiles. Because demographic characteristics, clinical measurements, and lifestyle behaviors may vary across diabetes groups, descriptive comparison can provide a useful first step in understanding how these conditions differ within a dataset.
+
+This report focuses on three groups: Prediabetic, Type 1 Diabetes, and Type 2 Diabetes. The main research question is: How do demographic, clinical, and lifestyle characteristics differ across these three diabetes groups? Rather than narrowing the analysis to only one or two variables at the outset, we first considered a broader set of candidate demographic, clinical, and lifestyle factors and then used data preparation and exploratory analysis to determine which variables showed the clearest descriptive group differences.
+
+The data used in this project come from the Diabetes Dataset posted on Kaggle. To guide variable selection, we reviewed the dataset description together with general diabetes background resources and initially considered a broader candidate set of variables: Age, BMI, Blood Glucose Levels, Insulin Levels, Physical Activity, Dietary Habits, Smoking Status, and Alcohol Consumption. These variables were chosen because they represent demographic, clinical, and lifestyle dimensions that are commonly discussed in relation to diabetes and can be explored using the data wrangling, exploratory analysis, and visualization tools introduced in this class.
+
+In particular, the Kaggle data description was used to understand the available variables in the dataset, while general diabetes background resources were used to justify considering body size, glycemic measurements, insulin-related measures, physical activity, diet, smoking, and alcohol use as potentially relevant descriptive factors.
+
+## Data Preparation
+
+The data used in this project come from the Diabetes Dataset posted on Kaggle, <https://www.kaggle.com/datasets/ankitbatra1210/diabetes-dataset>. The original file used in the analysis is "diabetes_dataset00.csv". The full dataset contains multiple diabetes-related subtypes and a broad set of demographic, clinical, and lifestyle variables. The CSV file is read from the project folder and its basic dimensions are confirmed below.
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(knitr)
+library(forcats)
+library(scales)
+
+data_raw <- read.csv("diabetes_dataset00.csv")
+
+dataset_overview <- tibble(
+  item = c("Rows", "Columns"),
+  value = c(nrow(data_raw), ncol(data_raw))
+)
+
+kable(dataset_overview, caption = "Raw dataset overview")
+```
+
+The full dataset includes 70000 rows and 34 columns. The analysis was then restricted to observations whose Target value was one of the following three groups: Prediabetic, Type 1 Diabetes, or Type 2 Diabetes. This restriction was made so that the report could focus on a more interpretable comparison among three clinically meaningful groups rather than all diabetes subtypes in the full dataset.
+
+After subsetting the target groups, a broader set of candidate variables relevant to the research question was retained: Target, Age, BMI, Blood.Glucose.Levels, Insulin.Levels, Physical.Activity, Dietary.Habits, Smoking.Status, and Alcohol.Consumption. These variables were kept at this stage so that the exploratory analysis could compare a wider range of demographic, clinical, and lifestyle characteristics before narrowing the follow-up analysis to the clearest descriptive patterns.
+
+Finally, missingness in the selected variables was checked before proceeding to exploratory analysis. This step was included to document basic data quality and confirm that the broader candidate set of variables was suitable for grouped summaries and visualizations.
+
+```{r}
+data_raw <- read.csv("diabetes_dataset00.csv")
+
+focus_groups <- c("Prediabetic", "Type 1 Diabetes", "Type 2 Diabetes")
+
+data <- data_raw %>%
+  filter(Target %in% focus_groups) %>%
+  select(
+    Target, Age, BMI, Blood.Glucose.Levels, Insulin.Levels,
+    Physical.Activity, Dietary.Habits, Smoking.Status, Alcohol.Consumption
+  ) %>%
+  mutate(
+    Target = factor(Target, levels = focus_groups),
+    Physical.Activity = as.factor(Physical.Activity),
+    Dietary.Habits = as.factor(Dietary.Habits),
+    Smoking.Status = as.factor(Smoking.Status),
+    Alcohol.Consumption = as.factor(Alcohol.Consumption),
+    Age = as.numeric(Age),
+    BMI = as.numeric(BMI),
+    Blood.Glucose.Levels = as.numeric(Blood.Glucose.Levels),
+    Insulin.Levels = as.numeric(Insulin.Levels),
+    age_group = cut(
+      Age,
+      breaks = c(-Inf, 29, 39, 49, 59, Inf),
+      labels = c("<30", "30-39", "40-49", "50-59", "60+"),
+      right = TRUE
+    )
+  )
+
+missing_summary <- data %>%
+  summarise(
+    across(
+      c(
+        Target, Age, BMI, Blood.Glucose.Levels, Insulin.Levels,
+        Physical.Activity, Dietary.Habits, Smoking.Status, Alcohol.Consumption, age_group
+      ),
+      ~ sum(is.na(.))
+    )
+  ) %>%
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "missing_n")
+
+kable(missing_summary, caption = "Table 0. Missing values in selected variables")
+```
+
+Table 0 shows that there are no missing values in the selected variables. This simplifies the subsequent exploratory analysis because all group comparisons can be conducted without additional imputation or case-wise deletion.
+
+## Exploratory Analysis
+
+This section describes the analytic sample, the broader set of candidate variables retained after data preparation, and the distributions of those variables across the three diabetes groups. The goal is to summarize the structure of the data and determine which variables show the clearest descriptive group differences before narrowing the follow-up analysis.
+
+The first step in the exploratory analysis is to describe the size of each diabetes group in the analytic sample. Table 1 reports the number and proportion of observations in each of the three groups, and Table 2 reports the number and proportion of age groups.
+
+```{r}
+sample_desc <- data %>%
+  count(Target, name = "n") %>%
+  mutate(prop = percent(n / sum(n), accuracy = 0.1))
+
+kable(sample_desc, caption = "Table 1. Counts and proportions by diabetes group")
+```
+
+Table 1 shows that the three diabetes groups are very similar in sample size, with each group representing about one-third of the analytic sample. This balanced group structure makes the descriptive comparisons easier to interpret because no single group dominates the summaries or visualizations.
+
+```{r}
+sample_age_group <- data %>% count(age_group) %>% 
+  mutate(prop = percent(n / sum(n), accuracy = 0.1))
+kable(sample_age_group, caption = "Table 2. Age-group sample sizes (5 groups)")
+```
+
+Table 2 shows the distribution of participants across age groups. Most observations fall in the younger and middle-aged categories (\<30, 30–44, and 45–59), while the 60+ group contains fewer observations. The 30–44 and 45–59 groups are similar in size, whereas the \<30 group is the largest.
+
+Next, the continuous variables included in the analysis—Age, BMI, Blood Glucose Levels, and Insulin Levels—are summarized by diabetes group. These summaries provide a concise description of center and spread for each variable and help identify broad differences across groups.
+
+```{r}
+summary_cont <- data %>%
+  group_by(Target) %>%
+  summarise(
+    n = n(),
+    Age_mean = mean(Age, na.rm = TRUE),
+    Age_sd = sd(Age, na.rm = TRUE),
+    Age_median = median(Age, na.rm = TRUE),
+    Age_IQR = IQR(Age, na.rm = TRUE),
+    BMI_mean = mean(BMI, na.rm = TRUE),
+    BMI_sd = sd(BMI, na.rm = TRUE),
+    BMI_median = median(BMI, na.rm = TRUE),
+    BMI_IQR = IQR(BMI, na.rm = TRUE),
+    Glucose_mean = mean(Blood.Glucose.Levels, na.rm = TRUE),
+    Glucose_sd = sd(Blood.Glucose.Levels, na.rm = TRUE),
+    Glucose_median = median(Blood.Glucose.Levels, na.rm = TRUE),
+    Glucose_IQR = IQR(Blood.Glucose.Levels, na.rm = TRUE),
+    Insulin_mean = mean(Insulin.Levels, na.rm = TRUE),
+    Insulin_sd = sd(Insulin.Levels, na.rm = TRUE),
+    Insulin_median = median(Insulin.Levels, na.rm = TRUE),
+    Insulin_IQR = IQR(Insulin.Levels, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+kable(summary_cont, caption = "Table 3. Summary statistics of continuous variables by diabetes group")
+```
+
+Table 3 suggests that the continuous variables show clear between-group differences. Age and BMI increase from Type 1 Diabetes to Prediabetic to Type 2 Diabetes, while Blood Glucose Levels and Insulin Levels are also lowest in Type 1 Diabetes and highest in Type 2 Diabetes. Prediabetic individuals generally occupy an intermediate position across these measures, which supports treating this group as descriptively distinct but positioned between the two diabetes groups on several clinical characteristics.
+
+To complement the tables, boxplots are used to visualize the distributions of the continuous variables across the three diabetes groups. These figures make it easier to compare medians, variability, and overlap between groups.
+
+```{r}
+cont_long <- data %>%
+  select(Target, Age, BMI, Blood.Glucose.Levels, Insulin.Levels) %>%
+  pivot_longer(cols = -Target, names_to = "variable", values_to = "value")
+
+ggplot(cont_long, aes(x = Target, y = value, fill = Target)) +
+  geom_boxplot(outlier.alpha = 0.2) +
+  facet_wrap(~ variable, scales = "free_y") +
+  labs(
+    title = "Figure 1. Continuous variables by diabetes group",
+    x = "Diabetes group",
+    y = "Value"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+Figure 1 reinforces the summary statistics by showing that the continuous variables do not overlap equally across the three groups. The clearest visual separation appears in BMI, Blood Glucose Levels, and Insulin Levels, while Age also differs strongly across groups. At the same time, the boxplots show some within-group variability, indicating that these variables are informative descriptively but do not perfectly separate the three groups one variable at a time.
+
+The final part of the exploratory analysis focuses on the lifestyle variables Physical Activity, Dietary Habits, Smoking Status, and Alcohol Consumption. Because these are categorical variables, proportional bar charts are used to compare the relative distribution of each category across the three diabetes groups.
+
+```{r}
+lifestyle_summary <- data %>%
+  select(Target, Physical.Activity, Dietary.Habits, Smoking.Status, Alcohol.Consumption) %>%
+  pivot_longer(cols = -Target, names_to = "variable", values_to = "level") %>%
+  count(Target, variable, level) %>%
+  group_by(Target, variable) %>%
+  mutate(prop = round(n / sum(n), 3)) %>%
+  ungroup()
+
+kable(lifestyle_summary, caption = "Table 4. Counts and proportions for lifestyle variables by diabetes group")
+
+
+```
+
+Table 4 indicates that the lifestyle variables do not show equally strong descriptive differences across the three diabetes groups. In particular, Smoking Status and Alcohol Consumption are close to evenly distributed within each group, and Physical Activity also appears highly balanced. Dietary Habits shows slightly more variation than the other lifestyle variables, but overall the lifestyle measures are much less clearly separated than the continuous clinical variables in this dataset.
+
+```{r}
+lifestyle_long <- data %>%
+  select(Target, Physical.Activity, Dietary.Habits, Smoking.Status, Alcohol.Consumption) %>%
+  pivot_longer(cols = -Target, names_to = "variable", values_to = "level")
+
+ggplot(lifestyle_long, aes(x = Target, fill = level)) +
+  geom_bar(position = "fill") +
+  facet_wrap(~ variable) +
+  scale_y_continuous(labels = percent_format()) +
+  labs(
+    title = "Figure 2. Lifestyle variable distributions across diabetes groups",
+    x = "Diabetes group",
+    y = "Proportion",
+    fill = "Category"
+  ) +
+  theme_minimal()
+```
+
+Figure 2 visually confirms that the lifestyle variables contribute less obvious group separation than the continuous measures. Because the proportions for Smoking Status and Alcohol Consumption are especially similar across groups, these variables are retained as background descriptive factors rather than emphasized in the follow-up analysis. By contrast, the continuous clinical variables—especially BMI and Blood Glucose Levels—appear more promising for a more focused descriptive comparison.
+
+Taken together, the exploratory analysis suggests that not all candidate variables show equally clear descriptive differences across the three diabetes groups. Among the continuous variables, BMI and Blood Glucose Levels appear to show relatively clear separation in center and spread, while Age and Insulin Levels remain useful for context. Among the lifestyle variables, Physical Activity and Dietary Habits show more visible between-group differences than Smoking Status and Alcohol Consumption in this dataset. For this reason, the follow-up analysis in the next section focuses on the joint pattern of BMI and Blood Glucose Levels across age groups.
+
+## Preliminary Results
+
+This section addresses the main research question and then narrows to a follow-up question based on the patterns observed during data preparation and exploratory analysis. The emphasis here is on descriptive patterns rather than formal hypothesis testing.
+
+The summary table and boxplots show that the three diabetes groups differ in several continuous characteristics. In particular, Age, BMI, Blood Glucose Levels, and Insulin Levels do not appear to be distributed identically across groups, although some variables show clearer separation in center and spread than others. These patterns suggest that certain clinical measurements may be more useful than others for describing how the groups differ within this dataset.
+
+The lifestyle summaries and figures also suggest that Physical Activity, Dietary Habits, Smoking Status, and Alcohol Consumption do not contribute equally clear group differences. In this dataset, Physical Activity and Dietary Habits appear to show more interpretable between-group variation, whereas Smoking Status and Alcohol Consumption appear less clearly separated across the three diabetes groups.
+
+After reviewing the broader candidate set of variables through grouped summaries and exploratory figures, BMI and Blood Glucose Levels appeared to provide one of the clearest descriptive contrasts across the three diabetes groups. To investigate this pattern further, the follow-up analysis examines BMI and Blood Glucose Levels jointly in a scatterplot, with color indicating diabetes group and facets indicating age group. This figure allows the relationship between BMI and glucose to be compared across groups while also showing whether the pattern looks similar or different in younger and older age strata.
+
+```{r}
+ggplot(data, aes(x = BMI, y = Blood.Glucose.Levels, color = Target)) +
+  geom_point(alpha = 0.25, size = 1.1) +
+  facet_wrap(~ age_group) +
+  labs(
+    title = "Figure 3. BMI versus blood glucose across age groups",
+    x = "BMI",
+    y = "Blood Glucose Levels",
+    color = "Diabetes group"
+  ) +
+  theme_minimal()
+```
+
+Figure 3 suggests that BMI and Blood Glucose Levels provide a clearer joint descriptive contrast than the lifestyle variables considered earlier. In general, Prediabetic observations tend to lie between Type 1 Diabetes and Type 2 Diabetes in terms of both BMI and blood glucose. However, the age-stratified panels should be interpreted cautiously, because the three diabetes groups are not represented equally across all age groups in this dataset. In particular, the youngest age group is almost entirely Type 1 Diabetes, whereas the oldest age group is entirely Type 2 Diabetes, so the figure is more useful for descriptive visualization than for direct within-age-group comparison across all three groups.
+
+## Conclusion
+
+This report used a subset of the Kaggle diabetes dataset to compare Prediabetic, Type 1 Diabetes, and Type 2 Diabetes groups through data preparation, exploratory analysis, summary tables, and visualizations.
+
+The results show that the three groups differ most clearly in the continuous clinical variables. In particular, Age, BMI, Blood Glucose Levels, and Insulin Levels all show strong between-group differences, with Type 1 Diabetes generally having the lowest values, Type 2 Diabetes the highest values, and Prediabetic observations often falling in between. By contrast, the lifestyle variables considered here—especially Smoking Status and Alcohol Consumption—show much weaker descriptive separation across groups, while Dietary Habits shows only modest variation.
+
+Because BMI and Blood Glucose Levels emerged as two of the clearest descriptive variables in the exploratory analysis, they were carried forward into a follow-up visualization. That figure suggests meaningful joint differences across the three groups, but the age-stratified panels should be interpreted carefully because the diabetes groups are not equally represented across all age categories in this dataset.
+
+Overall, these findings are descriptive rather than causal. Even so, they demonstrate how data preparation and exploratory analysis can be used to begin with a broader candidate set of demographic, clinical, and lifestyle variables and then narrow to a more focused follow-up question using the clearest observed patterns in the data.
