@@ -1,0 +1,141 @@
+---
+title: "Boqian_Mao_Biostat_620_Lab8"
+author: "Boqian Mao"
+format: html
+editor: visual
+embed-resources: true
+fig-width: 5
+fig-height: 5
+theme: cosmo
+---
+
+## Step 1
+```{r}
+library(microbenchmark)
+
+fun1 <- function(n = 100, k = 4, lambda = 4) {
+  x <- NULL
+  
+  for (i in 1:n) {
+    x <- rbind(x, rpois(k, lambda))
+  }
+  return(x)
+}
+
+fun1alt <- function(n = 100, k = 4, lambda = 4) {
+  matrix(rpois(n * k, lambda), nrow = n, ncol = k)
+}
+
+set.seed(123)
+a <- fun1(100, 4, 4)
+
+set.seed(123)
+b <- fun1alt(100, 4, 4)
+
+dim(a)
+dim(b)
+identical(dim(a), dim(b))
+identical(a, b)
+
+# Benchmarking
+microbenchmark(
+  fun1(1000, 50, 4),
+  fun1alt(1000, 50, 4),
+  times = 100)
+```
+```{r}
+### 2
+library(matrixStats)
+set.seed(1234)
+x <- matrix(rnorm(1e4), nrow = 10)
+
+fun2 <- function(x) {
+  apply(x, 2, max)
+}
+
+fun2alt <- function(x) {
+  matrixStats::colMaxs(x)
+}
+
+res1 <- fun2(x)
+res2 <- fun2alt(x)
+
+identical(res1, res2)
+all.equal(res1, res2)
+
+length(res1)
+length(res2)
+
+# Benchmarking
+microbenchmark(
+  fun2(x),
+  fun2alt(x),
+  times = 100
+)
+```
+
+## Step 2
+```{r}
+library(parallel)
+
+my_boot <- function(dat, stat, R, ncpus = 1L) {
+  n <- nrow(dat)
+  idx <- matrix(sample.int(n, n * R, TRUE), nrow = n, ncol = R)
+  
+  ans <- mclapply(seq_len(R), function(i) {
+    stat(dat[idx[, i], , drop = FALSE])
+  }, mc.cores = ncpus)
+  
+  ans <- do.call(rbind, ans)
+  return(ans)
+}
+```
+
+```{r}
+# Bootstrap of an OLS
+my_stat <- function(d) coef(lm(y ~ x, data=d))
+
+# DATA SIM
+set.seed(1)
+n <- 500; R <- 1e4
+
+x <- cbind(rnorm(n)); y <- x*5 + rnorm(n)
+
+# Checking if we get something similar as lm
+ans0 <- confint(lm(y~x))
+ans1 <- my_boot(dat = data.frame(x, y), my_stat, R = R, ncpus = 2L)
+
+# You should get something like this
+t(apply(ans1, 2, quantile, c(.025,.975)))
+##                   2.5%      97.5%
+## (Intercept) -0.1372435 0.05074397
+## x            4.8680977 5.04539763
+ans0
+##                  2.5 %     97.5 %
+## (Intercept) -0.1379033 0.04797344
+## x            4.8650100 5.04883353
+```
+
+```{r}
+system.time(
+  ans_serial <- my_boot(dat = data.frame(x, y),
+                        stat = my_stat,
+                        R = R,
+                        ncpus = 1L)
+)
+
+# parallel
+system.time(
+  ans_parallel <- my_boot(dat = data.frame(x, y),
+                          stat = my_stat,
+                          R = R,
+                          ncpus = 2L)
+)
+```
+
+## Step 3
+### 1
+A problem is fit for parallelization when it can be broken into smaller tasks that are mostly independent of one another. If each part can be computed separately without waiting for the previous part to finish, then multiple CPU cores can work on those parts at the same time. Bootstrap is a good example, because each resample can be analyzed independently. On the other hand, if later steps depend heavily on earlier results, then parallelization is less useful. 
+
+### 2
+Vectorization and parallelization are both ways to make code faster, but they improve performance in different ways. Vectorization speeds up code by replacing explicit loops with optimized low level operations on whole vectors or matrices. Parallelization speeds up code by distributing independent tasks across multiple CPU cores. In general, vectorization should be considered first, because it is simpler. Parallelization is most useful when the problem still takes a long time after vectorization and when the work can be split into independent pieces.
