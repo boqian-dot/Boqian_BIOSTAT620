@@ -1,0 +1,312 @@
+---
+title: "Boqian_Mao_Biostat_620_Lab9"
+author: "Boqian Mao"
+format: html
+editor: visual
+embed-resources: true
+fig-width: 5
+fig-height: 5
+theme: cosmo
+---
+
+# Lab 9: SQL Exercises
+
+## Setup
+
+Install and load required packages:
+
+```{r setup, message=FALSE}
+# Install packages if needed
+# install.packages("RSQLite")
+# install.packages("DBI")
+
+library(RSQLite)
+library(DBI)
+```
+
+Create an in-memory SQLite database and load the data:
+
+```{r}
+# Create in-memory SQLite connection
+con <- dbConnect(SQLite(), ":memory:")
+
+doctor <- read.csv("https://raw.githubusercontent.com/dmcable/BIOSTAT620W26/main/data/hospital/doctor.csv")
+visit <- read.csv("https://raw.githubusercontent.com/dmcable/BIOSTAT620W26/main/data/hospital/visit.csv")
+patient <- read.csv("https://raw.githubusercontent.com/dmcable/BIOSTAT620W26/main/data/hospital/patient.csv")
+payment <- read.csv("https://raw.githubusercontent.com/dmcable/BIOSTAT620W26/main/data/hospital/payment.csv")
+
+
+# Load tables into the database
+dbWriteTable(con, "doctor", doctor, overwrite = TRUE)
+dbWriteTable(con, "patient", patient, overwrite = TRUE)
+dbWriteTable(con, "visit", visit, overwrite = TRUE)
+dbWriteTable(con, "payment", payment, overwrite = TRUE)
+
+dbListTables(con)
+```
+
+## Exercise 1
+
+```{r}
+query1 <- "
+  SELECT doctor_id, first_name, last_name
+  FROM doctor
+  ORDER BY last_name, first_name
+"
+result1 <- dbGetQuery(con, query1)
+head(result1, 10)
+```
+
+## Exercise 2
+
+```{r}
+query2 <- "
+  SELECT doctor_id, first_name, last_name
+  FROM doctor
+  WHERE last_name IN ('WILLIAMS', 'DAVIS')
+  ORDER BY last_name, first_name
+"
+result2 <- dbGetQuery(con, query2)
+result2
+```
+
+## Exercise 3
+
+```{r}
+query3 <- "
+  SELECT patient_id, visit_start_date
+  FROM visit
+  WHERE date(visit_start_date) = '2005-07-05'
+  Order by patient_id
+"
+result3 <- dbGetQuery(con, query3)
+head(result3)
+```
+
+## Exercise 4
+
+### 4.1
+
+```{r}
+query4.1 <- "
+  SELECT payment_id, amount
+  FROM payment
+  WHERE amount IN (199, 799, 999)
+  ORDER BY amount
+"
+result4.1 <- dbGetQuery(con, query4.1)
+head(result4.1)
+```
+
+### 4.2
+
+```{r}
+query4.2 <- "
+  SELECT payment_id, amount
+  FROM payment
+  WHERE amount > 500
+  ORDER BY amount DESC
+"
+result4.2 <- dbGetQuery(con, query4.2)
+head(result4.2)
+```
+
+### 4.3
+
+```{r}
+query4.3 <- "
+  SELECT payment_id, amount
+  FROM payment
+  WHERE amount BETWEEN 500 AND 800
+  ORDER BY amount
+"
+result4.3 <- dbGetQuery(con, query4.3)
+head(result4.3)
+```
+
+## Exercise 5
+
+```{r}
+query5 <- "
+  SELECT p.payment_id, p.amount, pt.patient_id, pt.last_name
+  FROM payment p
+  INNER JOIN patient pt ON p.patient_id = pt.patient_id
+  WHERE pt.last_name = 'DAVIS'
+  ORDER BY p.amount
+"
+result5 <- dbGetQuery(con, query5)
+head(result5, 10)
+```
+
+## Exercise 6
+
+### 6.1
+
+```{r}
+query6.1 <- "
+  SELECT COUNT(*)
+  FROM visit
+"
+result6.1 <- dbGetQuery(con, query6.1)
+result6.1
+```
+
+### 6.2
+
+```{r}
+query6.2 <- "
+  SELECT patient_id, COUNT(*) as visit_count
+  FROM visit
+  GROUP BY patient_id
+  ORDER BY visit_count
+"
+result6.2 <- dbGetQuery(con, query6.2)
+head(result6.2, 10)
+```
+
+### 6.3
+
+```{r}
+query6.3 <- "
+  SELECT patient_id, COUNT(*) as visit_count
+  FROM visit
+  GROUP BY patient_id
+  ORDER BY visit_count DESC
+"
+result6.3 <- dbGetQuery(con, query6.3)
+head(result6.3, 10)
+```
+
+### 6.4
+
+```{r}
+query6.4 <- "
+  SELECT patient_id, COUNT(*) as visit_count
+  FROM visit
+  GROUP BY patient_id
+  HAVING COUNT(*) >= 40
+  ORDER BY visit_count DESC
+"
+result6.4 <- dbGetQuery(con, query6.4)
+result6.4
+```
+
+## Exercise 7
+
+```{r}
+query7 <- "
+  SELECT
+    MAX(amount) as max_amount,
+    MIN(amount) as min_amount,
+    AVG(amount) as avg_amount,
+    SUM(amount) as total_amount
+  FROM payment
+"
+result7 <- dbGetQuery(con, query7)
+result7
+```
+
+### 7.1
+
+```{r}
+query7.1 <- "
+  SELECT
+    patient_id,
+    COUNT(*) as payment_count,
+    MAX(amount) as max_amount,
+    MIN(amount) as min_amount,
+    AVG(amount) as avg_amount,
+    SUM(amount) as total_amount
+  FROM payment
+  GROUP BY patient_id
+  ORDER BY payment_count DESC
+"
+result7.1 <- dbGetQuery(con, query7.1)
+head(result7.1, 10)
+```
+
+### 7.2
+
+```{r}
+query7.2 <- "
+  SELECT
+    patient_id,
+    COUNT(*) as payment_count,
+    MAX(amount) as max_amount,
+    MIN(amount) as min_amount,
+    AVG(amount) as avg_amount,
+    SUM(amount) as total_amount
+  FROM payment
+  GROUP BY patient_id
+  HAVING COUNT(*) >= 5
+  ORDER BY payment_count DESC
+"
+result7.2 <- dbGetQuery(con, query7.2)
+head(result7.2, 10)
+```
+
+## Exercise 8
+
+### 8.1
+
+```{r}
+query8.1 <- "
+  SELECT
+    d.doctor_id,
+    d.first_name,
+    d.last_name,
+    COUNT(*) as total_visits,
+    AVG(julianday(v.visit_end_date) - julianday(v.visit_start_date)) as avg_visit_length
+  FROM doctor d
+  INNER JOIN visit v ON d.doctor_id = v.doctor_id
+  GROUP BY d.doctor_id, d.first_name, d.last_name
+  ORDER BY avg_visit_length DESC
+"
+result8.1 <- dbGetQuery(con, query8.1)
+head(result8.1, 10)
+```
+
+### 8.2
+
+```{r}
+## Shortest
+query8.2 <- "
+  SELECT
+    d.doctor_id,
+    d.first_name,
+    d.last_name,
+    COUNT(*) as total_visits,
+    AVG(julianday(v.visit_end_date) - julianday(v.visit_start_date)) as avg_visit_length
+  FROM doctor d
+  INNER JOIN visit v ON d.doctor_id = v.doctor_id
+  GROUP BY d.doctor_id, d.first_name, d.last_name
+  ORDER BY avg_visit_length
+  LIMIT 5
+"
+result8.2 <- dbGetQuery(con, query8.2)
+result8.2
+```
+```{r}
+## Longest
+query8.2_L <- "
+  SELECT
+    d.doctor_id,
+    d.first_name,
+    d.last_name,
+    COUNT(*) as total_visits,
+    AVG(julianday(v.visit_end_date) - julianday(v.visit_start_date)) as avg_visit_length
+  FROM doctor d
+  INNER JOIN visit v ON d.doctor_id = v.doctor_id
+  GROUP BY d.doctor_id, d.first_name, d.last_name
+  ORDER BY avg_visit_length DESC
+  LIMIT 5
+"
+result8.2_L <- dbGetQuery(con, query8.2_L)
+result8.2_L
+```
+
+## Cleanup
+
+```{r}
+dbDisconnect(con)
+```
