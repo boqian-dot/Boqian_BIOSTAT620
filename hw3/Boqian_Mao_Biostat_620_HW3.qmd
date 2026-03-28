@@ -1,0 +1,198 @@
+---
+title: "BIOSTAT 620 - Homework 3: Text Mining"
+author: "Boqian Mao"
+format: html
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(tidytext)
+library(ggplot2)
+library(gridExtra)
+library(textdata)
+options(timeout = 300)
+```
+
+## Problem 1
+
+```{r q1-load-data}
+# Load the pubmed data
+pubmed <- read_csv("pubmed.csv") %>%
+  mutate(id = row_number())
+head(pubmed)
+nrow(pubmed)
+colnames(pubmed)
+```
+
+```{r q1-analysis}
+# Count abstracts per search term
+abstracts_per_term <- pubmed %>%
+    count(term, sort = TRUE)
+
+print(abstracts_per_term)
+```
+
+```{r}
+# Tokenize the abstracts
+pubmed_tokens <- pubmed %>%
+  unnest_tokens(word, abstract)
+
+head(pubmed_tokens)
+```
+
+```{r}
+top_5_tokens <- pubmed_tokens %>%
+  count(term, word, sort = TRUE) %>% 
+  group_by(term) %>% 
+  slice_max(n, n = 5, with_ties = FALSE) %>%
+  select(term, word, n)
+top_5_tokens
+```
+
+The most obvious pattern is that the search terms with more abstracts also tend to have more total tokens and more unique tokens. For example, covid has the largest number of abstracts and also the largest vocabulary size and token count. Another interesting point is that before removing stop words, the token counts are dominated by common function words rather than topic-specific scientific words.
+
+## Problem 2
+
+```{r q2-tokenize}
+pubmed_tokens_no_stop <- pubmed %>%
+  unnest_tokens(word, abstract) %>%
+  anti_join(stop_words, by = "word") %>%
+  group_by(term) %>%
+  count(word, sort = TRUE)
+```
+
+```{r}
+top_5_tokens_no_stop <- pubmed_tokens_no_stop %>%
+  slice_max(n, n = 5, with_ties = FALSE) %>%
+  select(term, word, n)
+top_5_tokens_no_stop
+```
+
+Yes, removing stop words does change which tokens appear as the most frequent. After removing stop words, the most frequent tokens become much more topic specific and medically informative.
+
+## Problem 3
+
+```{r q3-bigrams}
+# Create bigrams (two consecutive words) from abstracts
+pubmed_bigrams <- pubmed %>%
+  unnest_tokens(bigram, abstract, token = "ngrams", n = 2) %>%
+  count(bigram, sort = TRUE)
+
+print(nrow(pubmed_bigrams))
+
+top_10_bigrams <- pubmed_bigrams %>%
+  slice_max(n, n = 10, with_ties = FALSE)
+print(top_10_bigrams)
+```
+
+```{r q3-viz}
+ggplot(top_10_bigrams, aes(x = reorder(bigram, n), y = n)) +
+  geom_col(fill = "steelblue") +
+  labs(title = "Top 10 Most Common Bigrams",
+       x = "Bigram",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Problem 4
+
+```{r q4-tfidf}
+pubmed_tfidf <- pubmed %>%
+  unnest_tokens(word, abstract) %>%
+  count(term, word) %>%
+  bind_tf_idf(word, term, n) %>%
+  arrange(desc(tf_idf))
+
+print(pubmed_tfidf %>% slice_head(n = 5))
+```
+
+```{r q4-top5-tfidf}
+# per search term
+top_5_tfidf <- pubmed_tfidf %>%
+  group_by(term) %>%
+  slice_max(tf_idf, n = 5, with_ties = FALSE) %>%
+  select(term, word, tf_idf)
+
+print(top_5_tfidf)
+```
+
+These results are different from Q1 because TF-IDF does not simply pick the most common words. In Q1, the most frequent tokens were often common words. With TF-IDF, words are ranked highly when they are not only frequent within one search term, but also relatively unique to that search term compared with the others.
+
+## Problem 5
+
+```{r q5-nrc}
+pubmed_nrc <- pubmed %>%
+  unnest_tokens(word, abstract) %>%
+  inner_join(get_sentiments("nrc"), by = "word") %>%
+  count(term, sentiment, sort = TRUE)
+
+# Most common sentiment per search term
+most_common_sentiment <- pubmed_nrc %>%
+  group_by(term) %>%
+  slice_max(n, n = 1, with_ties = FALSE) %>%
+  select(term, sentiment, n)
+
+print(pubmed_nrc)
+print(most_common_sentiment)
+```
+
+```{r q5-no-pos-neg}
+pubmed_nrc_no_pos_neg <- pubmed_nrc %>%
+  filter(!sentiment %in% c("positive", "negative"))
+
+most_common_sentiment_no_pos_neg <- pubmed_nrc_no_pos_neg %>%
+  group_by(term) %>%
+  slice_max(n, n = 1, with_ties = FALSE) %>%
+  select(term, sentiment, n)
+
+print(most_common_sentiment_no_pos_neg)
+```
+
+When positive and negative are included, they tend to dominate because they are very broad sentiment categories. Once they are removed, the analysis reveals more specific emotional patterns. In this dataset, fear becomes the dominant sentiment for several disease.
+
+## Problem 6
+
+```{r q6-afinn}
+pubmed_afinn <- pubmed %>%
+  unnest_tokens(word, abstract) %>%
+  inner_join(get_sentiments("afinn"), by = "word") %>%
+  group_by(id, term) %>%
+  summarise(afinn_score = mean(value, na.rm = TRUE),
+            n_sentiment_words = n(),
+            .groups = 'drop')
+
+print(pubmed_afinn %>% slice_head(n = 10))
+```
+
+```{r q6-summary}
+# Summary by search term
+afinn_summary <- pubmed_afinn %>%
+  group_by(term) %>%
+  summarise(mean_score = mean(afinn_score, na.rm = TRUE),
+            median_score = median(afinn_score, na.rm = TRUE),
+            sd_score = sd(afinn_score, na.rm = TRUE),
+            n_abstracts = n(),
+            .groups = 'drop') %>%
+  arrange(desc(mean_score))
+
+print(afinn_summary)
+```
+
+```{r q6-viz}
+ggplot(pubmed_afinn, aes(x = reorder(term, afinn_score, FUN = median), y = afinn_score)) +
+  geom_boxplot(fill = "lightblue", alpha = 0.7) +
+  geom_jitter(width = 0.2, alpha = 0.3, size = 1) +
+  coord_flip() +
+  labs(title = "AFINN Sentiment Scores by Search Term",
+       x = "Search Term",
+       y = "Sentiment Score (Positivity)") +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red", alpha = 0.5)
+```
+
+Cystic fibrosis is noticeably different from the others because it is the only term with an overall positive average sentiment.
