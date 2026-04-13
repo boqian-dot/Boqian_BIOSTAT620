@@ -1,0 +1,355 @@
+---
+title: "Boqian_Mao_Biostat_620_Hw4"
+author: "Boqian Mao"
+format: html
+editor: visual
+embed-resources: true
+fig-width: 5
+fig-height: 5
+theme: cosmo
+---
+
+## Q1
+
+```{r}
+# Use the functions with this data
+set.seed(2315)
+dat <- matrix(rnorm(200 * 100), nrow = 200)
+```
+
+```{r}
+fun2 <- function(mat) {
+  n <- nrow(mat)
+  k <- ncol(mat)
+  ans <- mat
+  for (i in 1:n) {
+    for (j in 2:k) {
+      ans[i, j] <- mat[i, j] + ans[i, j - 1]
+    }
+  }
+  ans
+}
+
+fun2alt <- function(mat) {
+  t(apply(mat, 1, cumsum))
+}
+
+out_original <- fun2(dat)
+out_fast <- fun2alt(dat)
+
+all.equal(out_original, out_fast)
+```
+
+```{r}
+# install.packages("microbenchmark")
+library(microbenchmark)
+
+mb_q1 <- microbenchmark(
+  original = fun2(dat),
+  faster   = fun2alt(dat),
+  times = 100L
+)
+
+mb_q1
+```
+```{r}
+boxplot(mb_q1, main = "Q1 Runtime Comparison")
+```
+
+## Q2
+```{r}
+fun3 <- function(x) {
+  out <- numeric(length(x))
+  cumsum_x <- 0
+  for (i in seq_along(x)) {
+    if (x[i] == 0) {
+      cumsum_x <- 0
+    } else {
+      cumsum_x <- cumsum_x + x[i]
+    }
+    out[i] <- cumsum_x
+  }
+  out
+}
+
+fun3alt <- function(x) {
+  cs <- cumsum(x)
+  reset <- cummax((x == 0) * cs)
+  cs - reset
+}
+
+set.seed(2315)
+x <- sample(c(0, -5:5), size = 100000, replace = TRUE)
+
+
+library(microbenchmark)
+mb_q2 <- microbenchmark(
+  original = fun3(x),
+  faster   = fun3alt(x),
+  times = 100L
+)
+
+print(mb_q2)
+
+# visualization
+boxplot(mb_q2, main = "Q2 Runtime Comparison")
+```
+
+## Q3
+```{r}
+sim_pi <- function(n = 1000, i = NULL) {
+  p <- matrix(runif(n*2), ncol = 2)
+  mean(rowSums(p^2) < 1) * 4
+}
+
+# Here is an example of the run
+set.seed(156)
+sim_pi(1000) # 3.132
+```
+
+```{r}
+set.seed(1231)
+
+time_serial <- system.time({
+  ans_serial <- unlist(lapply(1:4000, sim_pi, n = 10000))
+  serial_mean <- mean(ans_serial)
+  print(serial_mean)
+})
+```
+
+```{r}
+library(parallel)
+
+n_cores <- max(1, detectCores() - 1)
+cl <- makeCluster(n_cores)
+
+clusterExport(cl, "sim_pi")
+clusterSetRNGStream(cl, 1231)
+
+time_parallel <- system.time({
+  ans_parallel <- unlist(parLapply(cl, 1:4000, sim_pi, n = 10000))
+  parallel_mean <- mean(ans_parallel)
+  print(parallel_mean)
+})
+
+print(time_parallel)
+
+stopCluster(cl)
+```
+
+```{r}
+library(ggplot2)
+
+df_pi <- data.frame(
+  estimate = c(ans_serial, ans_parallel),
+  method = rep(c("Serial", "Parallel"),
+               times = c(length(ans_serial), length(ans_parallel)))
+)
+
+ggplot(df_pi, aes(x = estimate, fill = method)) +
+  geom_density(alpha = 0.4) +
+  geom_vline(xintercept = pi, linetype = "dashed") +
+  labs(
+    title = "Distribution of Pi Estimates",
+    x = "Estimated Pi",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+df_time <- data.frame(
+  method = c("Serial", "Parallel"),
+  elapsed = c(time_serial["elapsed"], time_parallel["elapsed"])
+)
+
+ggplot(df_time, aes(x = method, y = elapsed, fill = method)) +
+  geom_col() +
+  labs(
+    title = "Runtime Comparison",
+    x = "Method",
+    y = "Elapsed Time (seconds)"
+  ) +
+  theme_minimal()
+```
+These plots show that the distributions of the estimated values of pi for both methods are similar and they have very similar ranges and centers, indicating that the parallelization changes speed but not the overall simulation results.
+
+## SQL
+```{r}
+library(RSQLite)
+library(DBI)
+
+# Initialize a temporary in memory database
+con <- dbConnect(RSQLite::SQLite(), ":memory:")
+
+# Read in tables
+surveys <- read.csv("surveys.csv")
+species <- read.csv("species.csv")
+plots <- read.csv("plots.csv")
+
+# Copy data.frames to database
+dbWriteTable(con, "surveys", surveys, overwrite = TRUE)
+dbWriteTable(con, "species", species, overwrite = TRUE)
+dbWriteTable(con, "plots", plots, overwrite = TRUE)
+```
+
+## Q4
+```{r}
+dbGetQuery(con, "
+  SELECT year,
+         month,
+         day,
+         species_id,
+         ROUND(weight / 1000.0, 2) AS weight_kg
+  FROM surveys
+  WHERE year = 1999
+  ORDER BY species_id;
+")
+```
+
+## Q5
+```{r}
+dbGetQuery(con, "
+  SELECT SUM(weight) AS total_weight,
+         AVG(weight) AS average_weight,
+         MIN(weight) AS minimum_weight,
+         MAX(weight) AS maximum_weight
+  FROM surveys;
+")
+```
+```{r}
+dbGetQuery(con, "
+  SELECT SUM(weight) AS total_weight,
+         AVG(weight) AS average_weight,
+         MIN(weight) AS minimum_weight,
+         MAX(weight) AS maximum_weight
+  FROM surveys
+  WHERE weight BETWEEN 5 AND 10;
+")
+```
+## Q6
+```{r}
+q6_result <- DBI::dbGetQuery(con, "
+  SELECT year,
+         species_id,
+         COUNT(*) AS count_per_year_species,
+         ROUND(AVG(weight), 2) AS avg_weight
+  FROM surveys
+  GROUP BY year, species_id
+  ORDER BY year, species_id;
+")
+
+q6_result
+```
+
+## Q7
+```{r}
+dbGetQuery(con, "
+  SELECT taxa,
+         COUNT(*) AS num_species
+  FROM species
+  GROUP BY taxa
+  HAVING COUNT(*) > 10
+  ORDER BY num_species DESC;
+")
+```
+
+## Q8
+```{r}
+q8_result <- DBI::dbGetQuery(con, "
+  SELECT s.plot_id,
+         sp.genus,
+         COUNT(*) AS num_animals
+  FROM surveys AS s
+  INNER JOIN species AS sp
+    ON s.species_id = sp.species_id
+  GROUP BY s.plot_id, sp.genus
+  ORDER BY s.plot_id ASC, num_animals DESC;
+")
+
+q8_result
+```
+
+## Q9
+```{r}
+dbGetQuery(con, "
+  SELECT sp.species_id,
+         sp.species,
+         p.plot_type,
+         COUNT(*) AS num_specimens
+  FROM surveys AS s
+  INNER JOIN species AS sp
+    ON s.species_id = sp.species_id
+  INNER JOIN plots AS p
+    ON s.plot_id = p.plot_id
+  WHERE sp.species_id != 'UN'
+  GROUP BY sp.species_id, sp.genus, sp.species, p.plot_type
+  ORDER BY sp.species_id, p.plot_type;
+")
+```
+
+## Q10
+```{r}
+dbGetQuery(con, "
+  SELECT sp.species_id,
+         sp.genus,
+         sp.species,
+         ROUND(AVG(s.weight), 2) AS avg_weight
+  FROM surveys AS s
+  INNER JOIN species AS sp
+    ON s.species_id = sp.species_id
+  WHERE sp.taxa = 'Rodent'
+  GROUP BY sp.species_id, sp.genus, sp.species
+  ORDER BY avg_weight DESC;
+")
+```
+
+## Q11
+```{r}
+library(ggplot2)
+library(plotly)
+
+q8_subset <- subset(q8_result, plot_id %in% 1:5)
+
+p <- ggplot(q8_subset, aes(x = factor(plot_id), y = num_animals, fill = genus)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Number of Animals by Genus for Plot IDs 1–5",
+    x = "Plot ID",
+    y = "Number of Animals",
+    fill = "Genus"
+  ) +
+  theme_minimal()
+
+ggplotly(p)
+```
+## Q12
+```{r}
+library(plotly)
+library(dplyr)
+
+q6_clean <- q6_result %>%
+  filter(!is.na(avg_weight)) %>%
+  group_by(species_id) %>%
+  filter(n() >= 5) %>%
+  ungroup()
+
+plot_ly(
+  data = q6_clean,
+  x = ~year,
+  y = ~avg_weight,
+  color = ~species_id,
+  type = "scatter",
+  mode = "lines+markers",
+  hovertemplate = paste(
+    "Species: %{color}<br>",
+    "Year: %{x}<br>",
+    "Avg weight: %{y:.2f}<extra></extra>"
+  )
+) %>%
+  layout(
+    title = "Average Species Weight Over Time",
+    xaxis = list(title = "Year"),
+    yaxis = list(title = "Average Weight"),
+    legend = list(title = list(text = "Species ID"))
+  )
+```
+I used the q6_result table from Question 6 and removed rows with missing average weights before plotting. To reduce noise, I filtered the data to include only species with at least 5 yearly observations. This makes the interactive line chart easier to read while still showing temporal trends in average species weight.
